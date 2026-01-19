@@ -77,7 +77,7 @@ if all_features:
     pc6_stats = df.groupby('pc_join').agg({
         'p6_gasm3_2023': 'mean',
         'p6_kwh_2023': 'mean',
-        'pc6_gemiddelde_woz_waarde_woning': 'mean'
+        'p6_kwh_productie_2023': 'mean'
     }).reset_index()
 
     final_gdf = gdf_polygons.merge(pc6_stats, on='pc_join', how='inner')

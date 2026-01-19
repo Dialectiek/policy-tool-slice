@@ -129,8 +129,8 @@ function updateSidePanel(prop) {
         </div>
         
         <div class="data-group">
-            <div class="data-label">Avg. WOZ Valuation</div>
-            <div class="data-value">€ ${formatNum(prop.pc6_gemiddelde_woz_waarde_woning * 1000)}</div>
+            <div class="data-label">Avg. Elec. Production (2023)</div>
+            <div class="data-value">${formatNum(prop.p6_kwh_productie_2023)} kWh / yr</div>
         </div>
 
         <div style="margin-top:60px; font-size:9px; color:var(--text-muted); line-height:1.5;">
