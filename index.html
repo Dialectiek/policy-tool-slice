@@ -10,18 +10,25 @@
 </head>
 <body>
 
-<div id="controls" class="floating-ui">
-    <div style="margin-bottom: 10px; color: var(--text-muted); font-size: 9px; font-weight: bold;">METRIC SELECTION</div>
-    <input type="radio" name="layer" value="gas" id="r-gas" checked> 
-    <label for="r-gas">GAS CONSUMPTION (m³)</label><br>
-    <div style="margin-top: 5px;"></div>
-    <input type="radio" name="layer" value="elec" id="r-elec"> 
-    <label for="r-elec">ELEC CONSUMPTION (kWh)</label>
+<div id="search-box" class="floating-ui">
+    <div class="search-flex">
+        <input type="text" id="search-input" placeholder="eg 1815AG">
+        <button id="search-btn">SEARCH</button>
+    </div>
 </div>
 
-<div id="search-box" class="floating-ui">
-    <input type="text" id="search-input" placeholder="eg 1815AG">
-    <button id="search-btn">SEARCH</button>
+<div id="controls" class="floating-ui">
+    <div class="control-label">Metric Selection</div>
+    <div class="radio-group">
+        <div class="radio-item">
+            <input type="radio" name="layer" value="gas" id="r-gas" checked> 
+            <label for="r-gas">GAS CONSUMPTION (m³)</label>
+        </div>
+        <div class="radio-item">
+            <input type="radio" name="layer" value="elec" id="r-elec"> 
+            <label for="r-elec">ELEC CONSUMPTION (kWh)</label>
+        </div>
+    </div>
 </div>
 
 <div id="map"></div>

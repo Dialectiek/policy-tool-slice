@@ -2,9 +2,17 @@ import pandas as pd
 import geopandas as gpd
 import requests
 import numpy as np
+from pathlib import Path
+
+# Resolve paths
+HERE = Path(__file__).resolve()
+PROJECT_ROOT = HERE.parent.parent
+DATA_DIR = PROJECT_ROOT / "data"
 
 # 1. Load CSV
-df = pd.read_csv('energiedata-match-gemeentecode=[GM0361].csv', sep=';')
+csv_path = DATA_DIR / "energiedata-match-gemeentecode=[GM0361].csv"
+
+df = pd.read_csv(csv_path, sep=';')
 df['pc_join'] = df['postcode'].str.replace(' ', '').str.upper()
 
 def get_coords(pt):
@@ -86,5 +94,5 @@ if all_features:
     if missing:
         print(f"\nMissing {len(missing)} codes. First 10 missing: {list(missing)[:10]}")
 
-    final_gdf.to_file("alkmaar_energy_map.geojson", driver='GeoJSON')
+    final_gdf.to_file(DATA_DIR / "alkmaar_energy_map.geojson", driver='GeoJSON')
     print("\nFile 'alkmaar_energy_map.geojson' is ready to use!")

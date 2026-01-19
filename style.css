@@ -47,8 +47,19 @@ body {
     font-weight: 500;
 }
 
-#controls { top: 20px; left: 60px; }
-#search-box { top: 20px; left: 240px; display: flex; gap: 8px; }
+/* SEARCH BOX ON TOP */
+#search-box { 
+    top: 20px; 
+    left: 60px; /* Same left as controls */
+    display: flex; 
+    gap: 8px; 
+}
+
+/* CONTROLS SELECTION BELOW */
+#controls { 
+    top: 80px;  /* Pushed down to clear the search box */
+    left: 60px; 
+}
 
 input[type="text"] {
     border: 1px solid var(--border-muted); 

@@ -38,7 +38,7 @@ function style(feature) {
 // Data Loading
 async function loadMap() {
     try {
-        const resp = await fetch('alkmaar_energy_map.geojson');
+        const resp = await fetch('data/alkmaar_energy_map.geojson');
         const data = await resp.json();
 
         pc6Layer = L.geoJSON(data, {

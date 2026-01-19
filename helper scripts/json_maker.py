@@ -1,13 +1,17 @@
+from pathlib import Path
 import pandas as pd
-import json
 
-# 1. Load your CSV file
-# Make sure the filename matches exactly what you have on your computer
-csv_filename = 'energiedata-match-gemeentecode=[GM0361].csv'
+# Resolve project structure
+HERE = Path(__file__).resolve()
+PROJECT_ROOT = HERE.parent.parent
+DATA_DIR = PROJECT_ROOT / "data"
+
+# CSV file
+csv_filename = DATA_DIR / "energiedata-match-gemeentecode=[GM0361].csv"
 
 print(f"Reading {csv_filename}...")
 
-# Reading with delimiter ';' as found in your file
+# Reading with delimiter ';'
 df = pd.read_csv(csv_filename, sep=';')
 
 # 2. Define the specific columns you want for the PC6 tiles
@@ -34,7 +38,7 @@ pc6_lookup = df[pc6_columns].drop_duplicates(subset=['postcode'])
 pc6_lookup['match_key'] = pc6_lookup['postcode'].str.replace(' ', '', regex=False)
 
 # 5. Save to JSON
-output_filename = 'pc6_lookup.json'
+output_filename = DATA_DIR / 'pc6_lookup.json'
 pc6_lookup.to_json(output_filename, orient='records', indent=4)
 
 print(f"Success! Created {output_filename} with {len(pc6_lookup)} unique postcodes.")
