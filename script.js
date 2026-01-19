@@ -246,6 +246,7 @@ function getCalculatedValue(feature, metric) {
     if (metric === 'elec') {
         const gasSaved = origGas * (1 - scenario.gas);
         return origElec + (gasSaved * 3); // Heat pump transition factor
+        // TODO replace func 
     }
 }
 
