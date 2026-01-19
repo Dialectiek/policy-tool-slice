@@ -2,192 +2,140 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Alkmaar Energy Poverty Map - PC6 Polygons</title>
+    <title>Alkmaar Energy Explorer - Gas vs Electricity</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body { margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; }
+        body { margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; display: flex; }
         #map { height: 100vh; flex-grow: 1; }
         
         #side-panel {
-            width: 350px;
-            height: 100vh;
-            background: #f8f9fa;
-            border-left: 2px solid #ddd;
-            padding: 20px;
-            box-sizing: border-box;
-            overflow-y: auto;
-            box-shadow: -2px 0 5px rgba(0,0,0,0.1);
+            width: 350px; height: 100vh; background: #f8f9fa;
+            border-left: 2px solid #ddd; padding: 20px; box-sizing: border-box;
+            overflow-y: auto; box-shadow: -2px 0 5px rgba(0,0,0,0.1);
         }
 
-        /* Legend Styling */
+        /* Control Box Styling */
+        #controls {
+            position: absolute; top: 10px; left: 50px; z-index: 1000;
+            background: white; padding: 15px; border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+
         .info.legend {
-            background: white;
-            padding: 15px;
-            line-height: 24px;
-            color: #333;
-            border-radius: 8px;
-            box-shadow: 0 0 15px rgba(0,0,0,0.2);
-            font-size: 12px;
+            background: white; padding: 15px; line-height: 18px; color: #333;
+            border-radius: 8px; box-shadow: 0 0 15px rgba(0,0,0,0.2); font-size: 12px;
         }
-        .info.legend i {
-            width: 18px;
-            height: 18px;
-            float: left;
-            margin-right: 8px;
-            opacity: 0.8;
-            border: 1px solid #ccc;
-        }
+        .info.legend i { width: 18px; height: 18px; float: left; margin-right: 8px; opacity: 0.8; }
 
-        /* Side Panel Styling */
         .data-item { margin-bottom: 15px; padding: 12px; background: white; border-radius: 6px; border: 1px solid #e0e0e0; }
-        .data-label { font-size: 11px; color: #7f8c8d; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px; }
+        .data-label { font-size: 11px; color: #7f8c8d; text-transform: uppercase; font-weight: bold; }
         .data-value { font-size: 18px; color: #2c3e50; margin-top: 5px; font-weight: 500; }
         .pc6-header { font-size: 26px; font-weight: 800; color: #2c3e50; margin-bottom: 20px; border-bottom: 3px solid #3498db; padding-bottom: 10px; }
-        .placeholder { color: #95a5a6; font-style: italic; text-align: center; margin-top: 100px; line-height: 1.5; }
     </style>
 </head>
 <body>
 
+<div id="controls">
+    <strong>Visualize:</strong><br>
+    <input type="radio" name="layer" value="gas" checked> Gas Consumption (m³)<br>
+    <input type="radio" name="layer" value="elec"> Electricity Usage (kWh)
+</div>
+
 <div id="map"></div>
 <div id="side-panel">
     <div id="panel-content">
-        <div class="placeholder">
-            <h3>Alkmaar PC6 Explorer</h3>
-            <p>Click on a neighborhood polygon to view detailed energy and housing statistics.</p>
+        <div class="placeholder" style="text-align:center; padding-top:50px;">
+            <h3>Alkmaar Explorer</h3>
+            <p>Select a metric and click a polygon.</p>
         </div>
     </div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
 <script>
-    // Initialize Map
     const map = L.map('map').setView([52.632, 4.753], 13);
-    
-    // Add a clean, light base layer
-    const baseMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '© OpenStreetMap'
-    }).addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-    // 1. Color Function: Ranges for Gas Consumption (m3)
-    function getColor(d) {
-        return d > 1500 ? '#800026' :
-               d > 1200 ? '#BD0026' :
-               d > 1000 ? '#E31A1C' :
-               d > 800  ? '#FC4E2A' :
-               d > 600  ? '#FD8D3C' :
-               d > 400  ? '#FEB24C' :
-               d > 0    ? '#228B22' : 
-                          '#ccc'; // Grey for missing data
+    let pc6Layer;
+    let currentMetric = 'gas';
+
+    // 1. Unified Color Logic
+    function getColor(d, type) {
+        if (type === 'gas') {
+            return d > 1500 ? '#800026' : d > 1200 ? '#BD0026' : d > 1000 ? '#E31A1C' :
+                   d > 800  ? '#FC4E2A' : d > 600  ? '#FD8D3C' : d > 400  ? '#FEB24C' : '#228B22';
+        } else {
+            // Electricity scales are usually higher (2000-4000 kWh)
+            return d > 4000 ? '#084594' : d > 3500 ? '#2171b5' : d > 3000 ? '#4292c6' :
+                   d > 2500 ? '#6baed6' : d > 2000 ? '#9ecae1' : d > 1500 ? '#c6dbef' : '#eff3ff';
+        }
     }
 
-    // 2. Dynamic Polygon Styling
     function style(feature) {
+        const val = currentMetric === 'gas' ? feature.properties.p6_gasm3_2023 : feature.properties.p6_kwh_2023;
         return {
-            fillColor: getColor(feature.properties.p6_gasm3_2023),
-            weight: 1,
-            opacity: 1,
-            color: 'white',
-            fillOpacity: 0.7
+            fillColor: getColor(val, currentMetric),
+            weight: 1, opacity: 1, color: 'white', fillOpacity: 0.7
         };
     }
 
-    // 3. Load the Local GeoJSON file
-    async function loadPc6Layer() {
-        try {
-            // This fetch looks for the file in the SAME folder as index.html
-            const resp = await fetch('alkmaar_energy_map.geojson');
-            
-            if (!resp.ok) {
-                throw new Error(`HTTP error! status: ${resp.status}. Ensure alkmaar_energy_map.geojson is in the same folder.`);
+    // 2. Load and Store Layer
+    async function loadMap() {
+        const resp = await fetch('alkmaar_energy_map.geojson');
+        const data = await resp.json();
+
+        pc6Layer = L.geoJSON(data, {
+            style: style,
+            onEachFeature: (feature, layer) => {
+                layer.on({
+                    mouseover: (e) => e.target.setStyle({weight: 3, color: '#333', fillOpacity: 0.9}),
+                    mouseout: (e) => pc6Layer.resetStyle(e.target),
+                    click: (e) => updateSidePanel(feature.properties)
+                });
             }
-
-            const data = await resp.json();
-
-            const pc6Layer = L.geoJSON(data, {
-                style: style,
-                onEachFeature: function (feature, layer) {
-                    layer.on({
-                        mouseover: function(e) {
-                            var l = e.target;
-                            l.setStyle({
-                                weight: 3,
-                                color: '#333',
-                                fillOpacity: 0.9
-                            });
-                            l.bringToFront();
-                        },
-                        mouseout: function(e) {
-                            pc6Layer.resetStyle(e.target);
-                        },
-                        click: function (e) {
-                            updateSidePanel(feature.properties);
-                            map.fitBounds(e.target.getBounds());
-                        }
-                    });
-                }
-            }).addTo(map);
-
-            console.log("Polygons loaded successfully!");
-
-        } catch (e) {
-            document.getElementById('panel-content').innerHTML = 
-                `<div style="color:red; padding:20px;"><b>Error:</b> ${e.message}</div>`;
-            console.error(e);
-        }
+        }).addTo(map);
+        updateLegend();
     }
 
-    // 4. Populate Side Panel with Geometry & PC6 properties
+    // 3. UI Interaction Logic
+    document.querySelectorAll('input[name="layer"]').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            currentMetric = e.target.value;
+            pc6Layer.setStyle(style); // Trigger re-styling of all polygons
+            updateLegend();
+        });
+    });
+
+    function updateLegend() {
+        const existingLegend = document.querySelector('.legend');
+        if (existingLegend) existingLegend.remove();
+
+        const legend = L.control({position: 'bottomright'});
+        legend.onAdd = function () {
+            const div = L.DomUtil.create('div', 'info legend');
+            const grades = currentMetric === 'gas' ? [0, 400, 600, 800, 1000, 1200, 1500] : [0, 1500, 2000, 2500, 3000, 3500, 4000];
+            const title = currentMetric === 'gas' ? 'Gas (m³)' : 'Elec (kWh)';
+            
+            div.innerHTML = `<strong>${title}</strong><br>`;
+            for (let i = 0; i < grades.length; i++) {
+                div.innerHTML += `<i style="background:${getColor(grades[i] + 1, currentMetric)}"></i> ${grades[i]}${grades[i + 1] ? '&ndash;' + grades[i + 1] : '+'}<br>`;
+            }
+            return div;
+        };
+        legend.addTo(map);
+    }
+
     function updateSidePanel(prop) {
-        const container = document.getElementById('panel-content');
-        const formatNum = (val) => (val != null && !isNaN(val)) ? Math.round(val).toLocaleString() : 'No Data';
-
-        container.innerHTML = `
-            <div class="pc6-header">${prop.postcode6 || 'Unknown PC6'}</div>
-            
-            <div class="data-item">
-                <div class="data-label">Avg Gas Consumption (2023)</div>
-                <div class="data-value">${formatNum(prop.p6_gasm3_2023)} m³</div>
-            </div>
-            
-            <div class="data-item">
-                <div class="data-label">Avg Electricity Usage</div>
-                <div class="data-value">${formatNum(prop.p6_kwh_2023)} kWh</div>
-            </div>
-            
-            <div class="data-item">
-                <div class="data-label">Avg WOZ Value</div>
-                <div class="data-value">€${formatNum(prop.pc6_gemiddelde_woz_waarde_woning * 1000)}</div>
-            </div>
-
-            <div class="data-item">
-                <div class="data-label">Area Context</div>
-                <div class="data-value" style="font-size:14px;">
-                    This polygon represents the spatial extent of <b>${prop.postcode6}</b>.
-                </div>
-            </div>
+        const formatNum = (val) => (val != null) ? Math.round(val).toLocaleString() : 'N/A';
+        document.getElementById('panel-content').innerHTML = `
+            <div class="pc6-header">${prop.postcode6}</div>
+            <div class="data-item"><div class="data-label">Gas (2023)</div><div class="data-value">${formatNum(prop.p6_gasm3_2023)} m³</div></div>
+            <div class="data-item"><div class="data-label">Electricity</div><div class="data-value">${formatNum(prop.p6_kwh_2023)} kWh</div></div>
+            <div class="data-item"><div class="data-label">Avg WOZ Value</div><div class="data-value">€${formatNum(prop.pc6_gemiddelde_woz_waarde_woning * 1000)}</div></div>
         `;
     }
 
-    // 5. Build and Add the Legend
-    const legend = L.control({position: 'bottomright'});
-    legend.onAdd = function (map) {
-        const div = L.DomUtil.create('div', 'info legend');
-        const grades = [0, 400, 600, 800, 1000, 1200, 1500];
-        
-        div.innerHTML = '<strong>Avg Gas usage (m³)</strong><br>';
-        for (let i = 0; i < grades.length; i++) {
-            div.innerHTML +=
-                '<i style="background:' + getColor(grades[i] + 1) + '"></i> ' +
-                grades[i] + (grades[i + 1] ? '&ndash;' + grades[i + 1] + '<br>' : '+');
-        }
-        return div;
-    };
-    legend.addTo(map);
-
-    // Start loading
-    loadPc6Layer();
+    loadMap();
 </script>
 </body>
 </html>
