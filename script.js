@@ -157,5 +157,136 @@ document.querySelectorAll('input[name="layer"]').forEach(radio => {
     });
 });
 
+// Global object to store local overrides
+// Format: { "1811AA": { gas: 0.5, pv: 2.0 }, ... }
+let postcodeScenarios = {};
+
+function getCalculatedValue(feature, metric) {
+    const pc = feature.properties.postcode6;
+    const scenario = postcodeScenarios[pc] || { gas: 1.0, pv: 1.0 };
+    
+    const origGas = feature.properties.p6_gasm3_2023 || 0;
+    const origElec = feature.properties.p6_kwh_2023 || 0;
+    const origPV = feature.properties.p6_kwh_productie_2023 || 0;
+
+    if (metric === 'gas') return origGas * scenario.gas;
+    
+    if (metric === 'pv') return origPV * scenario.pv;
+
+    if (metric === 'elec') {
+        const gasSaved = origGas * (1 - scenario.gas);
+        return origElec + (gasSaved * 3); // Heat pump transition factor
+    }
+}
+
+function updateSidePanel(prop) {
+    const pc = prop.postcode6;
+    if (!postcodeScenarios[pc]) {
+        postcodeScenarios[pc] = { gas: 1.0, pv: 1.0, modified: false };
+    }
+    const s = postcodeScenarios[pc];
+
+    const actualGas = prop.p6_gasm3_2023 || 0;
+    const actualElec = prop.p6_kwh_2023 || 0;
+    const actualPV = prop.p6_kwh_productie_2023 || 0;
+
+    const scenarioGas = getCalculatedValue({properties: prop}, 'gas');
+    const scenarioElec = getCalculatedValue({properties: prop}, 'elec');
+    const scenarioPV = getCalculatedValue({properties: prop}, 'pv');
+    
+    const formatNum = (val) => Math.round(val).toLocaleString('nl-NL');
+
+    // Check if this postcode has been modified to show the column immediately
+    const simActiveClass = s.modified ? "active" : "";
+
+    document.getElementById('panel-content').innerHTML = `
+        <div class="pc6-header">${pc}</div>
+        
+        <div class="data-grid">
+            <div class="data-column">
+                <div class="column-header">Actual (2023)</div>
+                <div class="data-group">
+                    <div class="data-label">Gas</div>
+                    <div class="data-value">${formatNum(actualGas)} m³</div>
+                </div>
+                <div class="data-group">
+                    <div class="data-label">Electricity</div>
+                    <div class="data-value">${formatNum(actualElec)} kWh</div>
+                </div>
+                <div class="data-group">
+                    <div class="data-label">PV Yield</div>
+                    <div class="data-value">${formatNum(actualPV)} kWh</div>
+                </div>
+            </div>
+
+            <div class="data-column sim-column ${simActiveClass}" id="sim-col">
+                <div class="column-header">Simulated</div>
+                <div class="data-group">
+                    <div class="data-label">Gas</div>
+                    <div class="data-value sim-value" id="val-sim-gas">${formatNum(scenarioGas)} m³</div>
+                </div>
+                <div class="data-group">
+                    <div class="data-label">Electricity</div>
+                    <div class="data-value sim-value" id="val-sim-elec">${formatNum(scenarioElec)} kWh</div>
+                </div>
+                <div class="data-group">
+                    <div class="data-label">PV Yield</div>
+                    <div class="data-value sim-value" id="val-sim-pv">${formatNum(scenarioPV)} kWh</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="sidebar-controls">
+            <div class="control-label" style="margin-bottom:15px; color:var(--accent-red)">Local Scenario Parameters</div>
+            <div class="slider-unit">
+                <div class="slider-header">
+                    <span class="slider-label">Gas Demand</span>
+                    <span class="slider-pct" id="pct-gas">${Math.round(s.gas * 100)}%</span>
+                </div>
+                <input type="range" class="side-slider" id="input-gas" min="0" max="100" value="${s.gas * 100}">
+            </div>
+
+            <div class="slider-unit">
+                <div class="slider-header">
+                    <span class="slider-label">PV Adoption</span>
+                    <span class="slider-pct" id="pct-pv">${Math.round(s.pv * 100)}%</span>
+                </div>
+                <input type="range" class="side-slider" id="input-pv" min="100" max="500" value="${s.pv * 100}">
+            </div>
+        </div>
+    `;
+
+    document.getElementById('input-gas').addEventListener('input', (e) => {
+        postcodeScenarios[pc].gas = e.target.value / 100;
+        postcodeScenarios[pc].modified = true;
+        document.getElementById('pct-gas').innerText = e.target.value + "%";
+        refreshVisuals(prop);
+    });
+
+    document.getElementById('input-pv').addEventListener('input', (e) => {
+        postcodeScenarios[pc].pv = e.target.value / 100;
+        postcodeScenarios[pc].modified = true;
+        document.getElementById('pct-pv').innerText = e.target.value + "%";
+        refreshVisuals(prop);
+    });
+}
+
+function refreshVisuals(originalProps) {
+    pc6Layer.setStyle(style);
+    
+    const scenarioGas = getCalculatedValue({properties: originalProps}, 'gas');
+    const scenarioElec = getCalculatedValue({properties: originalProps}, 'elec');
+    const scenarioPV = getCalculatedValue({properties: originalProps}, 'pv');
+    
+    // Reveal the column
+    document.getElementById('sim-col').classList.add('active');
+
+    const formatNum = (val) => Math.round(val).toLocaleString('nl-NL');
+    
+    document.getElementById('val-sim-gas').innerText = formatNum(scenarioGas) + " m³";
+    document.getElementById('val-sim-elec').innerText = formatNum(scenarioElec) + " kWh";
+    document.getElementById('val-sim-pv').innerText = formatNum(scenarioPV) + " kWh";
+}
+
 // Run
 loadMap();
