@@ -88,12 +88,31 @@
             style: style,
             onEachFeature: (feature, layer) => {
                 layer.on({
-                    mouseover: (e) => e.target.setStyle({weight: 3, color: '#333', fillOpacity: 0.9}),
+                    mouseover: (e) => {
+                        var l = e.target;
+                        l.setStyle({weight: 3, color: '#333', fillOpacity: 0.9});
+                        l.bringToFront();
+                    },
                     mouseout: (e) => pc6Layer.resetStyle(e.target),
-                    click: (e) => updateSidePanel(feature.properties)
+                    click: (e) => {
+                        // UPDATE SIDE PANEL
+                        updateSidePanel(feature.properties);
+                        
+                        // RESTORED AUTO-ZOOM FUNCTIONALITY
+                        map.fitBounds(e.target.getBounds(), {
+                            padding: [50, 50], // Adds some breathing room around the polygon
+                            maxZoom: 16        // Prevents zooming in too far on tiny postcodes
+                        });
+                    }
                 });
             }
         }).addTo(map);
+        
+        // Initial view fit (optional: fits the map to all data on load)
+        if (data.features.length > 0) {
+            map.fitBounds(pc6Layer.getBounds());
+        }
+        
         updateLegend();
     }
 
