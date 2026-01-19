@@ -47,6 +47,18 @@ body {
     font-weight: 500;
 }
 
+/* This targets the SVG path created by Leaflet */
+/* Apply the uniform opacity to modified areas */
+.modified-pc6 {
+    fill-opacity: 0.55 !important;
+    transition: fill-opacity 0.2s ease;
+}
+
+/* Ensure the SVG patterns are treated as fills by the browser */
+path {
+    transition: fill 0.2s ease, stroke 0.2s ease;
+}
+
 /* SLIDERS */
 .sidebar-controls {
     margin-top: 30px;

@@ -23,16 +23,86 @@ function getColor(d, type) {
     }
 }
 
+// // Styling Function
+// function style(feature) {
+//     const val = currentMetric === 'gas' ? feature.properties.p6_gasm3_2023 : feature.properties.p6_kwh_2023;
+//     return { 
+//         fillColor: getColor(val, currentMetric), 
+//         weight: 0.8, 
+//         opacity: 0.4, 
+//         color: '#ffffff', 
+//         fillOpacity: 0.55 
+//     };
+// }
+
 // Styling Function
+// Function to create a dynamic striped pattern for a specific postcode
+function createDynamicPattern(pc, colorActual, colorSim) {
+    let defs = document.querySelector('svg defs');
+    if (!defs) {
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("style", "height:0; width:0; position:absolute;");
+        defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+        svg.appendChild(defs);
+        document.body.insertBefore(svg, document.body.firstChild);
+    }
+
+    const patternId = `pattern-${pc.replace(/\s+/g, '')}`;
+    let pattern = document.getElementById(patternId);
+
+    // Create or update the pattern
+    if (!pattern) {
+        pattern = document.createElementNS("http://www.w3.org/2000/svg", "pattern");
+        pattern.setAttribute("id", patternId);
+        pattern.setAttribute("patternUnits", "userSpaceOnUse");
+        pattern.setAttribute("width", "10");
+        pattern.setAttribute("height", "10");
+        pattern.setAttribute("patternTransform", "rotate(45)");
+        defs.appendChild(pattern);
+    }
+
+    pattern.innerHTML = `
+        <rect width="10" height="10" fill="${colorActual}"></rect>
+        <rect width="5" height="10" fill="${colorSim}"></rect>
+    `;
+
+    return patternId;
+}
+
+// Updated Styling Function
 function style(feature) {
-    const val = currentMetric === 'gas' ? feature.properties.p6_gasm3_2023 : feature.properties.p6_kwh_2023;
-    return { 
-        fillColor: getColor(val, currentMetric), 
-        weight: 0.8, 
-        opacity: 0.4, 
-        color: '#ffffff', 
-        fillOpacity: 0.55 
+    const pc = feature.properties.postcode6;
+    const scenario = postcodeScenarios[pc] || { gas: 1.0, pv: 1.0, modified: false };
+    
+    // 1. Get Actual Value and Color
+    const actualVal = currentMetric === 'gas' ? feature.properties.p6_gasm3_2023 : feature.properties.p6_kwh_2023;
+    const colorActual = getColor(actualVal, currentMetric);
+
+    // 2. Get Simulated Value and Color
+    const simVal = getCalculatedValue(feature, currentMetric);
+    const colorSim = getColor(simVal, currentMetric);
+
+    let styleObj = {
+        weight: 0.8,
+        opacity: 0.4,
+        color: '#ffffff',
+        fillOpacity: 0.7
     };
+
+    if (scenario.modified) {
+        // Create a unique pattern for this specific change
+        const patternId = createDynamicPattern(pc, colorActual, colorSim);
+        
+        styleObj.fillColor = `url(#${patternId})`;
+        styleObj.fillOpacity = 1.0; // Pattern needs full opacity to see colors clearly
+        styleObj.weight = 2;
+        styleObj.color = colorSim; // Border follows the new simulation color
+        styleObj.opacity = 1.0;
+    } else {
+        styleObj.fillColor = colorActual;
+    }
+
+    return styleObj;
 }
 
 // Data Loading
@@ -272,15 +342,16 @@ function updateSidePanel(prop) {
 }
 
 function refreshVisuals(originalProps) {
-    pc6Layer.setStyle(style);
+    // This forces Leaflet to re-calculate the styles and patterns
+    pc6Layer.setStyle(style); 
+    
+    // ... update the numeric columns as before ...
+    const pc = originalProps.postcode6;
+    document.getElementById('sim-col').classList.add('active');
     
     const scenarioGas = getCalculatedValue({properties: originalProps}, 'gas');
     const scenarioElec = getCalculatedValue({properties: originalProps}, 'elec');
     const scenarioPV = getCalculatedValue({properties: originalProps}, 'pv');
-    
-    // Reveal the column
-    document.getElementById('sim-col').classList.add('active');
-
     const formatNum = (val) => Math.round(val).toLocaleString('nl-NL');
     
     document.getElementById('val-sim-gas').innerText = formatNum(scenarioGas) + " m³";
