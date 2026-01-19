@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Alkmaar Energy Explorer - Gas vs Electricity</title>
+    <title>Alkmaar Energy Explorer - Search & Visualize</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; display: flex; }
@@ -14,31 +14,42 @@
             overflow-y: auto; box-shadow: -2px 0 5px rgba(0,0,0,0.1);
         }
 
-        /* Control Box Styling */
         #controls {
-            position: absolute; top: 10px; left: 50px; z-index: 1000;
+            position: absolute; top: 10px; left: 60px; z-index: 1000;
             background: white; padding: 15px; border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.2);
         }
 
-        .info.legend {
-            background: white; padding: 15px; line-height: 18px; color: #333;
-            border-radius: 8px; box-shadow: 0 0 15px rgba(0,0,0,0.2); font-size: 12px;
+        #search-box {
+            position: absolute; top: 10px; left: 240px; z-index: 1000;
+            background: white; padding: 10px; border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            display: flex; gap: 5px;
         }
-        .info.legend i { width: 18px; height: 18px; float: left; margin-right: 8px; opacity: 0.8; }
 
+        #search-input { border: 1px solid #ccc; padding: 8px; border-radius: 4px; text-transform: uppercase; width: 100px; }
+        #search-btn { background: #3498db; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; }
+        #search-btn:hover { background: #2980b9; }
+
+        .info.legend { background: white; padding: 15px; line-height: 18px; border-radius: 8px; font-size: 12px; }
+        .info.legend i { width: 18px; height: 18px; float: left; margin-right: 8px; opacity: 0.8; }
         .data-item { margin-bottom: 15px; padding: 12px; background: white; border-radius: 6px; border: 1px solid #e0e0e0; }
         .data-label { font-size: 11px; color: #7f8c8d; text-transform: uppercase; font-weight: bold; }
         .data-value { font-size: 18px; color: #2c3e50; margin-top: 5px; font-weight: 500; }
-        .pc6-header { font-size: 26px; font-weight: 800; color: #2c3e50; margin-bottom: 20px; border-bottom: 3px solid #3498db; padding-bottom: 10px; }
+        .pc6-header { font-size: 26px; font-weight: 800; color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }
     </style>
 </head>
 <body>
 
 <div id="controls">
     <strong>Visualize:</strong><br>
-    <input type="radio" name="layer" value="gas" checked> Gas Consumption (m³)<br>
-    <input type="radio" name="layer" value="elec"> Electricity Usage (kWh)
+    <input type="radio" name="layer" value="gas" checked> Gas (m³)<br>
+    <input type="radio" name="layer" value="elec"> Elec (kWh)
+</div>
+
+<div id="search-box">
+    <input type="text" id="search-input" placeholder="1815AG">
+    <button id="search-btn">Search</button>
 </div>
 
 <div id="map"></div>
@@ -46,7 +57,7 @@
     <div id="panel-content">
         <div class="placeholder" style="text-align:center; padding-top:50px;">
             <h3>Alkmaar Explorer</h3>
-            <p>Select a metric and click a polygon.</p>
+            <p>Search for a postcode or click a polygon.</p>
         </div>
     </div>
 </div>
@@ -59,13 +70,11 @@
     let pc6Layer;
     let currentMetric = 'gas';
 
-    // 1. Unified Color Logic
     function getColor(d, type) {
         if (type === 'gas') {
             return d > 1500 ? '#800026' : d > 1200 ? '#BD0026' : d > 1000 ? '#E31A1C' :
-                   d > 800  ? '#FC4E2A' : d > 600  ? '#FD8D3C' : d > 400  ? '#FEB24C' : '#228B22';
+                   d > 800 ? '#FC4E2A' : d > 600 ? '#FD8D3C' : d > 400 ? '#FEB24C' : '#228B22';
         } else {
-            // Electricity scales are usually higher (2000-4000 kWh)
             return d > 4000 ? '#084594' : d > 3500 ? '#2171b5' : d > 3000 ? '#4292c6' :
                    d > 2500 ? '#6baed6' : d > 2000 ? '#9ecae1' : d > 1500 ? '#c6dbef' : '#eff3ff';
         }
@@ -73,13 +82,9 @@
 
     function style(feature) {
         const val = currentMetric === 'gas' ? feature.properties.p6_gasm3_2023 : feature.properties.p6_kwh_2023;
-        return {
-            fillColor: getColor(val, currentMetric),
-            weight: 1, opacity: 1, color: 'white', fillOpacity: 0.7
-        };
+        return { fillColor: getColor(val, currentMetric), weight: 1, opacity: 1, color: 'white', fillOpacity: 0.7 };
     }
 
-    // 2. Load and Store Layer
     async function loadMap() {
         const resp = await fetch('alkmaar_energy_map.geojson');
         const data = await resp.json();
@@ -88,57 +93,60 @@
             style: style,
             onEachFeature: (feature, layer) => {
                 layer.on({
-                    mouseover: (e) => {
-                        var l = e.target;
-                        l.setStyle({weight: 3, color: '#333', fillOpacity: 0.9});
-                        l.bringToFront();
-                    },
+                    mouseover: (e) => e.target.setStyle({weight: 3, color: '#333', fillOpacity: 0.9}),
                     mouseout: (e) => pc6Layer.resetStyle(e.target),
                     click: (e) => {
-                        // UPDATE SIDE PANEL
                         updateSidePanel(feature.properties);
-                        
-                        // RESTORED AUTO-ZOOM FUNCTIONALITY
-                        map.fitBounds(e.target.getBounds(), {
-                            padding: [50, 50], // Adds some breathing room around the polygon
-                            maxZoom: 16        // Prevents zooming in too far on tiny postcodes
-                        });
+                        map.fitBounds(e.target.getBounds(), { padding: [50, 50], maxZoom: 16 });
                     }
                 });
             }
         }).addTo(map);
-        
-        // Initial view fit (optional: fits the map to all data on load)
-        if (data.features.length > 0) {
-            map.fitBounds(pc6Layer.getBounds());
-        }
-        
+        if (data.features.length > 0) map.fitBounds(pc6Layer.getBounds());
         updateLegend();
     }
 
-    // 3. UI Interaction Logic
+    // --- SEARCH FUNCTIONALITY ---
+    function searchPostcode() {
+        const input = document.getElementById('search-input').value.replace(/\s+/g, '').toUpperCase();
+        let found = false;
+
+        pc6Layer.eachLayer((layer) => {
+            const pc = layer.feature.properties.postcode6.replace(/\s+/g, '').toUpperCase();
+            if (pc === input) {
+                found = true;
+                updateSidePanel(layer.feature.properties);
+                map.fitBounds(layer.getBounds(), { padding: [50, 50], maxZoom: 16 });
+                layer.setStyle({weight: 4, color: '#f1c40f', fillOpacity: 0.9}); // Highlight yellow
+            }
+        });
+
+        if (!found) alert("Postcode not found in this map.");
+    }
+
+    document.getElementById('search-btn').addEventListener('click', searchPostcode);
+    document.getElementById('search-input').addEventListener('keypress', (e) => { if (e.key === 'Enter') searchPostcode(); });
+
+    // Layer Toggle
     document.querySelectorAll('input[name="layer"]').forEach(radio => {
         radio.addEventListener('change', (e) => {
             currentMetric = e.target.value;
-            pc6Layer.setStyle(style); // Trigger re-styling of all polygons
+            pc6Layer.setStyle(style);
             updateLegend();
         });
     });
 
     function updateLegend() {
-        const existingLegend = document.querySelector('.legend');
-        if (existingLegend) existingLegend.remove();
-
+        const existing = document.querySelector('.legend');
+        if (existing) existing.remove();
         const legend = L.control({position: 'bottomright'});
         legend.onAdd = function () {
             const div = L.DomUtil.create('div', 'info legend');
             const grades = currentMetric === 'gas' ? [0, 400, 600, 800, 1000, 1200, 1500] : [0, 1500, 2000, 2500, 3000, 3500, 4000];
-            const title = currentMetric === 'gas' ? 'Gas (m³)' : 'Elec (kWh)';
-            
-            div.innerHTML = `<strong>${title}</strong><br>`;
-            for (let i = 0; i < grades.length; i++) {
-                div.innerHTML += `<i style="background:${getColor(grades[i] + 1, currentMetric)}"></i> ${grades[i]}${grades[i + 1] ? '&ndash;' + grades[i + 1] : '+'}<br>`;
-            }
+            div.innerHTML = `<strong>${currentMetric === 'gas' ? 'Gas (m³)' : 'Elec (kWh)'}</strong><br>`;
+            grades.forEach((g, i) => {
+                div.innerHTML += `<i style="background:${getColor(g + 1, currentMetric)}"></i> ${g}${grades[i+1] ? '&ndash;'+grades[i+1] : '+'}<br>`;
+            });
             return div;
         };
         legend.addTo(map);
