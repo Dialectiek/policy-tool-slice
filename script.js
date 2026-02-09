@@ -181,52 +181,6 @@ function updateLegend() {
     legend.addTo(map);
 }
 
-// Update Side Panel
-function updateSidePanel(prop) {
-    const formatNum = (val) => (val != null) ? Math.round(val).toLocaleString('nl-NL') : 'N/A';
-    
-    document.getElementById('panel-content').innerHTML = `
-        <div class="pc6-header">${prop.postcode6}</div>
-        
-        <div class="data-group">
-            <div class="data-label">Gas Consumption (2023)</div>
-            <div class="data-value">${formatNum(prop.p6_gasm3_2023)} m³ / yr</div>
-        </div>
-        
-        <div class="data-group">
-            <div class="data-label">Electricity Usage (2023)</div>
-            <div class="data-value">${formatNum(prop.p6_kwh_2023)} kWh / yr</div>
-        </div>
-        
-        <div class="data-group">
-            <div class="data-label">Avg. Elec. Production (2023)</div>
-            <div class="data-value">${formatNum(prop.p6_kwh_productie_2023)} kWh / yr</div>
-        </div>
-
-        <div style="margin-top:60px; font-size:9px; color:var(--text-muted); line-height:1.5;">
-            <strong>METHODOLOGY</strong><br>
-            Geometry: CBS 2021 PC6 Boundaries.<br>
-            Energy: VNG (CBS) Energy Statistics 2023.<br>
-            Matched per PC6.
-        </div>
-    `;
-}
-
-// Event Listeners
-document.getElementById('search-btn').addEventListener('click', searchPostcode);
-
-document.getElementById('search-input').addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') searchPostcode();
-});
-
-document.querySelectorAll('input[name="layer"]').forEach(radio => {
-    radio.addEventListener('change', (e) => {
-        currentMetric = e.target.value;
-        pc6Layer.setStyle(style);
-        updateLegend();
-    });
-});
-
 // Global object to store local overrides
 // Format: { "1811AA": { gas: 0.5, pv: 2.0 }, ... }
 let postcodeScenarios = {};
@@ -252,6 +206,8 @@ function getCalculatedValue(feature, metric) {
 
 function updateSidePanel(prop) {
     const pc = prop.postcode6;
+    
+    // Ensure the scenario object exists
     if (!postcodeScenarios[pc]) {
         postcodeScenarios[pc] = { gas: 1.0, pv: 1.0, modified: false };
     }
@@ -266,8 +222,6 @@ function updateSidePanel(prop) {
     const scenarioPV = getCalculatedValue({properties: prop}, 'pv');
     
     const formatNum = (val) => Math.round(val).toLocaleString('nl-NL');
-
-    // Check if this postcode has been modified to show the column immediately
     const simActiveClass = s.modified ? "active" : "";
 
     document.getElementById('panel-content').innerHTML = `
@@ -324,9 +278,28 @@ function updateSidePanel(prop) {
                 </div>
                 <input type="range" class="side-slider" id="input-pv" min="100" max="500" value="${s.pv * 100}">
             </div>
+
+            <div class="simulation-actions" style="margin-top: 25px;">
+                <button id="run-sim-btn" class="primary-btn">RUN POLICY SIMULATION</button>
+            </div>
+
+            <div id="simulation-output" style="margin-top: 20px; display: none;">
+                <div class="control-label">Simulation Result</div>
+                <div id="graph-container" style="width: 100%; height: 200px; background: #f9f9f9; border: 1px dashed #ccc; display: flex; align-items: center; justify-content: center; border-radius: 4px;">
+                    <span style="font-size: 10px; color: #999;">Graph will render here...</span>
+                </div>
+                <a id="download-link" href="#" style="display: block; margin-top: 10px; font-size: 10px; color: var(--primary-dark); text-decoration: underline;">Download processed_data.csv</a>
+            </div>
+        </div>
+
+        <div style="margin-top:40px; font-size:9px; color:var(--text-muted); line-height:1.5;">
+            <strong>METHODOLOGY</strong><br>
+            Geometry: CBS 2021 PC6 Boundaries.<br>
+            Energy: VNG (CBS) Energy Statistics 2023.
         </div>
     `;
 
+    // Re-attach listeners because innerHTML wipes them
     document.getElementById('input-gas').addEventListener('input', (e) => {
         postcodeScenarios[pc].gas = e.target.value / 100;
         postcodeScenarios[pc].modified = true;
@@ -339,6 +312,10 @@ function updateSidePanel(prop) {
         postcodeScenarios[pc].modified = true;
         document.getElementById('pct-pv').innerText = e.target.value + "%";
         refreshVisuals(prop);
+    });
+
+    document.getElementById('run-sim-btn').addEventListener('click', () => {
+        runPythonSimulation(pc, postcodeScenarios[pc]);
     });
 }
 
@@ -358,6 +335,174 @@ function refreshVisuals(originalProps) {
     document.getElementById('val-sim-gas').innerText = formatNum(scenarioGas) + " m³";
     document.getElementById('val-sim-elec').innerText = formatNum(scenarioElec) + " kWh";
     document.getElementById('val-sim-pv').innerText = formatNum(scenarioPV) + " kWh";
+}
+
+// Keep your listeners but ensure they are correctly mapped
+document.getElementById('search-btn').addEventListener('click', searchPostcode);
+document.getElementById('search-input').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') searchPostcode();
+});
+
+document.querySelectorAll('input[name="layer"]').forEach(radio => {
+    radio.addEventListener('change', (e) => {
+        currentMetric = e.target.value;
+        if (pc6Layer) pc6Layer.setStyle(style);
+        updateLegend();
+    });
+});
+
+let energyChart = null; 
+let lastCsvData = null; // Store data to allow re-rendering in the popup
+
+async function runPythonSimulation(postcode, scenario) {
+    const btn = document.getElementById('run-sim-btn');
+    const output = document.getElementById('simulation-output');
+    const graphContainer = document.getElementById('graph-container');
+    const titleElement = output.querySelector('.control-label');
+    
+    btn.innerText = "PROCESSING PROFILE...";
+    btn.disabled = true;
+
+    const pcFile = postcode.replace(/\s+/g, '').toUpperCase();
+    const filePath = `processed/pc6_profile_${pcFile}.csv`;
+
+    try {
+        const response = await fetch(filePath);
+        
+        // Specific check for "File Not Found"
+        if (response.status === 404) {
+            throw new Error(`NO_DATA`);
+        }
+        
+        if (!response.ok) throw new Error("FETCH_ERROR");
+        
+        lastCsvData = await response.text();
+        
+        // Success UI
+        titleElement.innerHTML = `
+            Simulation Result 
+            <span class="expand-btn" onclick="openChartModal()" 
+                  style="font-size:12px; cursor:pointer; color:#2980b9; margin-left:8px; vertical-align:middle;" 
+                  title="View Fullscreen">⛶</span>
+        `;
+
+        graphContainer.innerHTML = '<canvas id="chartCanvas"></canvas>';
+        output.style.display = "block";
+        document.getElementById('download-link').setAttribute('href', filePath);
+
+        renderEnergyChart('chartCanvas', lastCsvData, false);
+
+    } catch (error) {
+        output.style.display = "block";
+        
+        if (error.message === 'NO_DATA') {
+            graphContainer.innerHTML = `
+                <div style="text-align:center; padding:20px; color:#7f8c8d;">
+                    <div style="font-size: 20px; margin-bottom:5px;">🔍</div>
+                    <div style="font-size:10px; font-weight:bold; color:#2f3640;">NO DATA FOUND</div>
+                    <div style="font-size:9px;">Profile for <strong>${pcFile}</strong> is not available in the processed directory.</div>
+                </div>
+            `;
+        } else {
+            graphContainer.innerHTML = `<div style="color:#e84118; font-size:10px; text-align:center; padding:20px;">An unexpected error occurred.</div>`;
+        }
+        
+        // Clear the title if data fails
+        titleElement.innerHTML = `Simulation Result`;
+        
+    } finally {
+        btn.innerText = "RUN POLICY SIMULATION";
+        btn.disabled = false;
+    }
+}
+
+// Reusable Charting Function
+function renderEnergyChart(canvasId, csvData, isModal = false) {
+    const rows = csvData.trim().split('\n').slice(1);
+    const labels = [];
+    const datasets = { gross: [], pv: [], net: [], heat: [], hp: [], gas: [] };
+
+    rows.forEach(row => {
+        const cols = row.split(',');
+        labels.push(cols[0]); // timestamp
+        datasets.gross.push(parseFloat(cols[1]));
+        datasets.pv.push(parseFloat(cols[2]));
+        datasets.net.push(parseFloat(cols[3]));
+        datasets.heat.push(parseFloat(cols[4]));
+        datasets.hp.push(parseFloat(cols[5]));
+        datasets.gas.push(parseFloat(cols[6]));
+    });
+
+    const ctx = document.getElementById(canvasId).getContext('2d');
+    
+    // If it's the sidebar chart, destroy previous instance
+    if (!isModal && energyChart) energyChart.destroy();
+
+    const chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                { label: 'Elec Gross', data: datasets.gross, borderColor: '#3498db', borderWidth: 1, pointRadius: 0 },
+                { label: 'PV Gen', data: datasets.pv, borderColor: '#f1c40f', borderWidth: 1, pointRadius: 0 },
+                { label: 'Elec Net', data: datasets.net, borderColor: '#2c3e50', borderWidth: 2, pointRadius: 0 },
+                { label: 'Heat Demand', data: datasets.heat, borderColor: '#e67e22', borderWidth: 1, pointRadius: 0 },
+                { label: 'HP Input', data: datasets.hp, borderColor: '#9b59b6', borderWidth: 1, pointRadius: 0 },
+                { label: 'Gas Input', data: datasets.gas, borderColor: '#e74c3c', borderWidth: 1, pointRadius: 0 }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    type: 'time',
+                    time: { unit: 'month', displayFormats: { month: 'M/yy' } },
+                    min: '2026-01-01',
+                    max: '2026-12-31',
+                    ticks: { font: { size: isModal ? 11 : 8 } }
+                }
+            },
+            plugins: {
+                legend: { position: 'top', labels: { boxWidth: 10, font: { size: isModal ? 12 : 9 } } }
+            }
+        }
+    });
+
+    if (!isModal) energyChart = chartInstance;
+    return chartInstance;
+}
+
+function openChartModal() {
+    const modal = document.getElementById('chart-modal');
+    const container = document.getElementById('modal-graph-container');
+    const closeBtn = document.getElementById('close-modal-btn');
+
+    modal.style.display = "block";
+    container.innerHTML = '<canvas id="modalCanvas"></canvas>';
+    
+    // Slight delay to ensure canvas is ready in DOM
+    setTimeout(() => renderEnergyChart('modalCanvas', lastCsvData, true), 50);
+
+    // Define the Close Function
+    const closeModal = () => {
+        modal.style.display = "none";
+        // Remove the keydown listener when modal is closed to save memory
+        document.removeEventListener('keydown', handleEsc);
+    };
+
+    // Setup Exit Listeners (X and ESC)
+    closeBtn.onclick = closeModal;
+
+    const handleEsc = (e) => {
+        if (e.key === "Escape") closeModal();
+    };
+    document.addEventListener('keydown', handleEsc);
+
+    // Optional: Close on background click
+    modal.onclick = (e) => {
+        if (e.target === modal) closeModal();
+    };
 }
 
 // Run
