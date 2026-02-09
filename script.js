@@ -390,7 +390,7 @@ async function runPythonSimulation(postcode, scenario) {
         // 3. Update Title and Render
         titleElement.innerHTML = `
             Result for ${pc6} (${Math.round(electrification * 100)}% Elec)
-            <span class="expand-btn" onclick="openChartModal()" style="font-size:12px; cursor:pointer; color:#2980b9; margin-left:8px;">⛶</span>
+            <span class="expand-btn" onclick="openChartModal()" style="font-size:16px; cursor:pointer; color:#2980b9; margin-left:8px;">⛶</span>
         `;
 
         graphContainer.innerHTML = '<canvas id="chartCanvas"></canvas>';

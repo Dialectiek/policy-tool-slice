@@ -256,5 +256,5 @@ button {
     color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer;
 }
 .expand-btn {
-    font-size: 10px; color: var(--primary-dark); cursor: pointer; text-decoration: underline; margin-top: 5px; display: inline-block;
+    font-size: 10px; color: var(--primary-dark); cursor: pointer; margin-top: 5px; display: inline-block;
 }
