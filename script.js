@@ -360,56 +360,50 @@ async function runPythonSimulation(postcode, scenario) {
     const graphContainer = document.getElementById('graph-container');
     const titleElement = output.querySelector('.control-label');
     
-    btn.innerText = "PROCESSING PROFILE...";
+    btn.innerText = "RUNNING BACKEND...";
     btn.disabled = true;
 
-    const pcFile = postcode.replace(/\s+/g, '').toUpperCase();
-    const filePath = `processed/pc6_profile_${pcFile}.csv`;
+    const pc6 = postcode.replace(/\s+/g, '').toUpperCase();
+    
+    // Get the electrification value from the scenario
+    // If gas slider is at 40%, electrification is 0.6 (60%)
+    const electrification = (1 - scenario.gas).toFixed(2);
 
     try {
-        const response = await fetch(filePath);
+        // 1. Call the backend API with both PC6 and Electrification params
+        // We pass these as URL parameters
+        const url = `http://127.0.0.1:8000/simulate/${pc6}?electrification=${electrification}`;
+        const apiResponse = await fetch(url);
         
-        // Specific check for "File Not Found"
-        if (response.status === 404) {
-            throw new Error(`NO_DATA`);
-        }
+        if (!apiResponse.ok) throw new Error('BACKEND_ERROR');
+
+        // 2. The backend has now copied the file to /processed/
+        // We fetch the new file from our UI local directory
+        const filePath = `processed/pc6_profile_${pc6}.csv`;
         
-        if (!response.ok) throw new Error("FETCH_ERROR");
+        // Add a timestamp to the fetch to prevent the browser from using a cached version
+        const fileResponse = await fetch(`${filePath}?t=${new Date().getTime()}`);
+        if (!fileResponse.ok) throw new Error('FILE_SYNC_ERROR');
         
-        lastCsvData = await response.text();
-        
-        // Success UI
+        lastCsvData = await fileResponse.text();
+
+        // 3. Update Title and Render
         titleElement.innerHTML = `
-            Simulation Result 
-            <span class="expand-btn" onclick="openChartModal()" 
-                  style="font-size:12px; cursor:pointer; color:#2980b9; margin-left:8px; vertical-align:middle;" 
-                  title="View Fullscreen">⛶</span>
+            Result for ${pc6} (${Math.round(electrification * 100)}% Elec)
+            <span class="expand-btn" onclick="openChartModal()" style="font-size:12px; cursor:pointer; color:#2980b9; margin-left:8px;">⛶</span>
         `;
 
         graphContainer.innerHTML = '<canvas id="chartCanvas"></canvas>';
         output.style.display = "block";
-        document.getElementById('download-link').setAttribute('href', filePath);
-
         renderEnergyChart('chartCanvas', lastCsvData, false);
 
     } catch (error) {
-        output.style.display = "block";
-        
-        if (error.message === 'NO_DATA') {
-            graphContainer.innerHTML = `
-                <div style="text-align:center; padding:20px; color:#7f8c8d;">
-                    <div style="font-size: 20px; margin-bottom:5px;">🔍</div>
-                    <div style="font-size:10px; font-weight:bold; color:#2f3640;">NO DATA FOUND</div>
-                    <div style="font-size:9px;">Profile for <strong>${pcFile}</strong> is not available in the processed directory.</div>
-                </div>
-            `;
-        } else {
-            graphContainer.innerHTML = `<div style="color:#e84118; font-size:10px; text-align:center; padding:20px;">An unexpected error occurred.</div>`;
-        }
-        
-        // Clear the title if data fails
-        titleElement.innerHTML = `Simulation Result`;
-        
+        console.error(error);
+        graphContainer.innerHTML = `
+            <div style="text-align:center; padding:20px; color:#e84118; font-size:10px;">
+                <strong>SIMULATION FAILED</strong><br>
+                Check if Backend API is running.
+            </div>`;
     } finally {
         btn.innerText = "RUN POLICY SIMULATION";
         btn.disabled = false;
