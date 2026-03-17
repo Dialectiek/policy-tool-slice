@@ -1,3 +1,6 @@
 # Python cache files
 __pycache__/
 *.pyc
+
+# Ignore large Dutch VNG data
+Dutch_load_analysis/dook_vng_data/dook_vng_gemeenten_csv/
